@@ -1,6 +1,6 @@
 import requests
 
-# la informacion es pasada por teller 1 y 3
+# la informacion es pasada por teller 1, 2 y 4
 
 respuestas=[]
 tellers = [1,2,4]
