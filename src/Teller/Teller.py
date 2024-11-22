@@ -73,11 +73,12 @@ def get_commitment():
     '''
     {i: i, Eval: {j1: {G: Gj1,H: Hj1}, ...}, Sign: sign}
     '''
-    print("commitment")
     datos = request.get_json()
     votante=datos['i']
     Eval = datos['Eval']
     sign = datos['Sign']
+
+    print(f"Obteniendo evaluaciones de votante {votante}")
 
     # mensaje a validar: i + Gj1 + Hj1 + Gj2 + Hj2 + ...
     msj=votante
@@ -87,49 +88,45 @@ def get_commitment():
      
     # Validar firma
 
-    #bulletin_board[votante]["commitments"] = Eval
+    print(f"Buscando información de votante {votante} en Bulletin Board")
 
-    url = "http://localhost:5000/get-public-commitments/"+str(votante)
+    #bulletin_board[votante]["commitments"] = Eval
+    url = "http://localhost:5000/get-public-commitments/"+str(votante) 
     response= requests.get(url)
     data=response.json()
     
     g=int(info['g'])
     h=int(info['h'])
+    allverify=True
+    print(f"Empezando verificación de evaluaciones del votante {votante}")
+    for key in Eval.keys():
+        print(f"Key: {key}, Value: {Eval[key]}")
+        evaluacion=Eval[key]
+        comm=data['commitments'][key]
+        id_teller=args.port-5000
+        G=evaluacion['G']
+        H=evaluacion['H']
 
-    #votante A
-    EvalA=Eval['A']
-    Comm=data['commitments']['A']
-    id_teller=args.port-5000
-    GA= EvalA['G']
-    HA= EvalA['H']
-    
-    BA= Comm['B']
-    BA1= Comm['B1']
-    BA2= Comm['B2']
-
-    verifyA=g**GA * h**HA== BA * BA1**(id_teller) * BA2**(id_teller**2)
-    if verifyA:
-        print("Voto A verificado")
-
-    #votante B
-    EvalB=Eval['B']
-    Comm=data['commitments']['B']
-    GB= EvalB['G']
-    HB= EvalB['H']
-
-    BB= Comm['B']
-    BB1= Comm['B1']
-    BB2= Comm['B2']
-    
-    verifyB=g**GB * h**HB== BB * BB1**(id_teller) * BB2**(id_teller**2)
-    if verifyB:
-        print("Voto B verificado")
-
-    if verifyA and verifyB:
+        e=0
+        value2=1
+        for c in range(len(comm)):
+            value2*=comm[c]**(id_teller**e)
+            e+=1
+        verify= g**G*h**H==value2
+        if verify:
+            print(f"Voto de votante {votante} para candidato {key} verificado")
+        else:
+            print("falla de verificacion")
+            print(f'{g**G*h**H} != {value2}')
+            allverify = False
+    if allverify:
+        print("Todas las verificaciones exitosas")
+        print(f"Guardando {Eval}")
         Shares[votante]=Eval
-        return jsonify({"message": "Voto completo verificado"})
+        return(jsonify("Todo verificado, guardado!"))
+    else:
+        return(jsonify("falla de verificación"))
 
-    return jsonify({"verifyA": verifyA, "verifyB": verifyB})
 #@app.route('/verify-associations', methods=['POST'])
 
 @app.route('/aggregate', methods=['GET'])
@@ -137,16 +134,28 @@ def aggregate():
     '''
     Recibe un JSON con la lista de votantes y sus votos
     '''
-    print("aggregate")
-    Agg_GA=Agg_HA= Agg_GB= Agg_HB=0
+    print("\n\n\nEmpezando agregación y envío")
+
+    aggregates=dict()
+    nc=0
+    for votante in Shares:
+        for cand in Shares[votante]:
+            nc+=1
+        break
+    print(f'Numero de candidatos = {nc}')
+
+    for i in range(nc):
+        aggregates[i] = {"G": 0, "H":0}
     
     for votante in Shares:
-        Agg_GA+=Shares[votante]['A']['G']
-        Agg_HA+=Shares[votante]['A']['H']
-        Agg_GB+=Shares[votante]['B']['G']
-        Agg_HB+=Shares[votante]['B']['H']
+        for cand in Shares[votante]:
+            aggregates[int(cand)]["G"]+= Shares[votante][cand]["G"]
+            aggregates[int(cand)]["H"]+= Shares[votante][cand]["H"]
     
-    return jsonify({"id": args.port-5000,"A": {"G": Agg_GA, "H": Agg_HA}, "B": {"G": Agg_GB, "H": Agg_HB}})
+    print(f'agregados finales = {aggregates}')
+    
+    print("Envio realizado")
+    return jsonify({"id": args.port-5000, "aggregate": aggregates})
 
 
 @app.route('/get-info', methods=['GET'])
