@@ -1,5 +1,7 @@
 from flask import Flask, jsonify, request
 import argparse
+import requests
+from ecutils.curves import *
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
@@ -16,6 +18,7 @@ funciones que verifiquen firmas
 
 import requests
 
+
 app = Flask(__name__)
 
 info={"id" : None,
@@ -24,9 +27,10 @@ info={"id" : None,
       'n': None,
       'd': None,
       
-      'q': None,
-      'g': 3, 
-      'h': 5,
+      'p': None,
+      'g': None, 
+      'h': None,
+      'curve' : secp256k1,  # por alguna razón no he podido guardar la curva en el teller, por ahora esta hardcodeado
 
       'votantes': None}
 
@@ -68,6 +72,29 @@ def generate_keys():
     
     return jsonify({"e": info["e"], "n": info["n"]})
 
+@app.route('/post-info', methods=['POST'])
+def post_info():
+    data = request.get_json()
+
+    # creacion del objeto curva
+    curve = EllipticCurve(
+        p=data["p"],
+        a=data["a"],
+        b=data["b"],
+        G=Point(data["G"]["x"],data["G"]["y"]),
+        n=data["n"],
+        h=data["h"],
+    )
+
+    info["p"]=curve.p
+    info["g"]=curve.G
+    info["h"]=curve.double_point(curve.G)
+    info["curve"]=curve
+    print(info)
+    return jsonify({"mensaje": "Curva guardada"})
+    
+
+
 @app.route('/commitment', methods=['POST'])
 def get_commitment():
     '''
@@ -95,8 +122,11 @@ def get_commitment():
     response= requests.get(url)
     data=response.json()
     
-    g=int(info['g'])
-    h=int(info['h'])
+    #informacion de la curva, hardcodeado
+    g=info['curve'].G
+    h=info['curve'].double_point(g)
+    curve=info["curve"]
+    
     allverify=True
     print(f"Empezando verificación de evaluaciones del votante {votante}")
     for key in Eval.keys():
@@ -104,20 +134,33 @@ def get_commitment():
         evaluacion=Eval[key]
         comm=data['commitments'][key]
         id_teller=args.port-5000
-        G=evaluacion['G']
-        H=evaluacion['H']
+
+        #para trabajar con los puntos en la curva, se debe mantener los numeros menores a n
+        G=evaluacion['G']%curve.n
+        H=evaluacion['H']%curve.n
 
         e=0
-        value2=1
+        value2=None
         for c in range(len(comm)):
-            value2*=comm[c]**(id_teller**e)
+            point=Point(comm[c][0],comm[c][1])
+            if value2==None:
+                value2=curve.multiply_point(id_teller**e,point)
+            else:
+                value2=curve.add_points(value2,
+                                       curve.multiply_point(id_teller**e,point))
             e+=1
-        verify= g**G*h**H==value2
+        
+        value1=curve.add_points(
+            curve.multiply_point(G,g),
+            curve.multiply_point(H,h)
+        )
+
+        verify = value1 == value2
         if verify:
             print(f"Voto de votante {votante} para candidato {key} verificado")
         else:
             print("falla de verificacion")
-            print(f'{g**G*h**H} != {value2}')
+            print(f'{value1} != {value2}')
             allverify = False
     if allverify:
         print("Todas las verificaciones exitosas")
@@ -151,6 +194,8 @@ def aggregate():
         for cand in Shares[votante]:
             aggregates[int(cand)]["G"]+= Shares[votante][cand]["G"]
             aggregates[int(cand)]["H"]+= Shares[votante][cand]["H"]
+
+
     
     print(f'agregados finales = {aggregates}')
     

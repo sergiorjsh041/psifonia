@@ -4,6 +4,9 @@ import time
 import random
 import requests
 import psutil
+import json
+import ecutils
+from ecutils.curves import *
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -25,16 +28,43 @@ NV=args.NV
 
 print(f"INICIO DE VOTACION '{Q}'")
 
+# Crear curva elíptica
+curve = secp256k1
+p=curve.p
+gx, gy = curve.G.x, curve.G.y
+h=curve.double_point(curve.G)
+hx, hy = h.x, h.y
+curve_data = {
+    "p": curve.p,
+    "a": curve.a,
+    "b": curve.b,
+    "G": {"x": curve.G.x, "y": curve.G.y},
+    "n": curve.n,
+    "h": curve.h,
+}
+curve_json=curve_data
+
+# Crear procesos para Bulletin Board y Tellers, envío de curvas
+print("Creacion de Bulletin Board")
+bulletin_board_process = subprocess.Popen(['start', 'cmd', '/k', 'python', '../ESP/Bulletin_board.py'], shell=True)
+
 print("Creacion de Tellers")
 teller_processes = []
 for i in range(NT):
     process = subprocess.Popen(['start', 'cmd', '/k', 'python', '../Teller/teller.py', '--port', str(5001 + i)], shell=True)
     teller_processes.append(process)
-print("Creacion de Bulletin Board")
-bulletin_board_process = subprocess.Popen(['start', 'cmd', '/k', 'python', '../ESP/Bulletin_board.py'], shell=True)
 
 time.sleep(10)
 
+url = "http://127.0.0.1:5000/public-info"
+datos={'curve': curve_json, 'g': [gx,gy], 'h': [hx,hy], 'p': p}
+respuesta = requests.post(url, json=datos)
+
+for i in range(NT):
+    url="http://127.0.0.1:500"+str(i+1)+"/post-info"
+    respuesta=requests.post(url,curve_json)
+
+time.sleep(10)
 print("VOTANTES, PUEDEN VOTAR\n\n\n")
 # Función para ejecutar voter.py
 def run_voter(voter_id):
@@ -86,7 +116,7 @@ print("\n\n\n\nRESULTADO FINAL\n")
 print(Q)
 print()
 for i in range(len(NN)):
-    print(f'{NN[i]}: {votos[i]} votos')
+    print(f'{NN[i]}: {votos[i]-NV} votos')
 
 _=input()
 
