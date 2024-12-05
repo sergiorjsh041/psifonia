@@ -3,7 +3,6 @@ import requests
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ecutils.curves import *
-
 # parser desde terminal
 parser = argparse.ArgumentParser(description="Setear votante")
 parser.add_argument('--id', type=str, help="id del votante")
@@ -43,7 +42,7 @@ curve = EllipticCurve(
 p=curve.p
 n=curve.n
 g=curve.G
-h=curve.double_point(g)
+h=curve.double_point(g) #no es de todas las curvas, pero esta sirve
 
 '''
 Creacion de polinomios para cada candidato, coeficientes deberían ser hasta n-1, porque hasta n-1 es el máximo exponente que se puede tener en la curva

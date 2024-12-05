@@ -4,11 +4,9 @@ import time
 import random
 import requests
 import psutil
-import json
-import ecutils
 from ecutils.curves import *
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from fractions import Fraction
 
 
 parser = argparse.ArgumentParser(description="Setear eleccion")
@@ -54,7 +52,7 @@ for i in range(NT):
     process = subprocess.Popen(['start', 'cmd', '/k', 'python', '../Teller/teller.py', '--port', str(5001 + i)], shell=True)
     teller_processes.append(process)
 
-time.sleep(10)
+time.sleep(5)
 
 url = "http://127.0.0.1:5000/public-info"
 datos={'curve': curve_json, 'g': [gx,gy], 'h': [hx,hy], 'p': p}
@@ -64,7 +62,7 @@ for i in range(NT):
     url="http://127.0.0.1:500"+str(i+1)+"/post-info"
     respuesta=requests.post(url,curve_json)
 
-time.sleep(10)
+time.sleep(5)
 print("VOTANTES, PUEDEN VOTAR\n\n\n")
 # Función para ejecutar voter.py
 def run_voter(voter_id):
@@ -78,7 +76,7 @@ with ThreadPoolExecutor(max_workers=10) as executor:
 
 print('\nTodos los votantes votaron')
 
-time.sleep(2)
+time.sleep(1)
 
 print('\nInicio de etapa de conteo')
 tellersHonestos= random.sample(range(1,NT+1),NTH)
@@ -104,19 +102,19 @@ for i in range(len(tellers)):
     teller=tellers[i]
     for cand in respuesta:
         Tj= respuesta[cand]['H']
-        Prod=1
-        Div=1
+        L=Fraction(1,1)
         for l in tellers:
             if l!= teller:
-                Prod*=l
-                Div*=l-teller
-        votos[int(cand)]+=Tj*Prod/Div
+                Prod=l
+                Div=l-teller
+                L*=Fraction(Prod,Div)
+        votos[int(cand)]+= int(Tj) * L
 
 print("\n\n\n\nRESULTADO FINAL\n")
 print(Q)
-print()
+print() 
 for i in range(len(NN)):
-    print(f'{NN[i]}: {votos[i]-NV} votos')
+    print(f'{NN[i]}: {int(float(votos[i]))-NV} votos')
 
 _=input()
 
